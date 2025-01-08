@@ -130,14 +130,16 @@ function gerarTabela(id, colunas) {
 
 function gerarTabelas(mesSelecionado) {
     const colunasGeral = ["TIPO"];
+    const colunasDepartamento = ["NOME", "DEPARTAMENTO", "TIPO"];
     for (let i = 0; i < 12; i++) {
         const mesAtual = ((mesSelecionado + i) % 12) + 1;
         colunasGeral.push(mesExtension2(mesAtual));
+        colunasDepartamento.push(mesExtension2(mesAtual));
     }
     const tabelas = [
         { id: "geral", colunas: colunasGeral},
-        { id: "departamento", colunas: ["Departamento"] }
-        // { id: "contas", colunas: ["Contas a Pagar"] },
+        { id: "departamento", colunas: colunasDepartamento},
+        { id: "contas", colunas: ["Contas a Pagar"] }
         // { id: "saldos", colunas: ["Saldos de Pedido"] },
         // { id: "compras", colunas: ["Compras Devolução"] }
     ];
@@ -197,69 +199,95 @@ function initHtml() {
 
 
     //Adiociona botão de ação
-    document.getElementById('filterButton').addEventListener('click', BotaoAcao);
+    document.getElementById('filterButton').addEventListener('click', botaoAcao);
     
 
 }
 
 
-function BotaoAcao() {
-    // Obter os valores do seletor de mês e ano pelos IDs padrão definidos nas funções de geração
-    const mesSelecionado = parseInt($("#mes").val()); // ID padrão do seletor de meses
-    const anoSelecionado = parseInt($("#ano").val()); // ID padrão do seletor de anos
-    x = mesSelecionado
 
+function botaoAcao() {
+    const mesSelecionado = parseInt($("#mes").val());
+    const anoSelecionado = parseInt($("#ano").val());
+    x = mesSelecionado;
 
     if (isNaN(mesSelecionado) || isNaN(anoSelecionado)) {
         alert("Por favor, selecione um mês e um ano válidos.");
         return;
     }
 
-    // Chamar a função buscaDeTabelaGeral com os valores de ano e mês
-    const resultados = buscaDeTabelaGeral(anoSelecionado, mesSelecionado);
+    // Obter os resultados das funções de busca
+    const resultadosGeral = buscaDeTabelaGeral(anoSelecionado, mesSelecionado);
+    const resultadosDepartamento = buscaDeTabelaDepartamento(anoSelecionado, mesSelecionado);
 
-    // Verificar se a tabela existe
-    const tabelaGeral = document.getElementById("body-geral-table");
+    // Atualizar tabela geral
+    preencherTabela("body-geral-table", resultadosGeral);
 
+    // Atualizar tabela departamento
+    preencherTabela("body-departamento-table", resultadosDepartamento);
 
-    if (!tabelaGeral) {
-        console.error("Tabela geral não encontrada!");
-        return;
-    }
-
-    // Limpar o corpo da tabela antes de inserir novos dados
-    tabelaGeral.innerHTML = "";
-
-    // Preencher a tabela com os dados retornados
-    resultados.forEach(resultado => {
-        const linha = document.createElement("tr");
-
-        // Adicionar cada elemento da lista como uma célula na linha
-        resultado.forEach(celula => {
-            const td = document.createElement("td");
-
-            if(typeof celula === 'number') {
-                td.textContent = formatarMoeda(celula);
-
-                if (celula < 0) {
-                    td.style.backgroundColor = "red";
-                    td.style.color = "white";
-                }
-            }else{
-                td.textContent = celula;
-            }        
-            linha.appendChild(td);
-        });
-
-        tabelaGeral.appendChild(linha);
-    });
-
-    // Exibir o container de resultados, caso esteja oculto
+    // Exibir o container de resultados
     const resultContainer = document.getElementById("resultContainer");
     if (resultContainer) {
         resultContainer.style.display = "block";
     }
 }
+
+
+function preencherTabela(tabelaId, dados) {
+    const tabela = document.getElementById(tabelaId);
+
+    // console.log('dados', dados);
+    
+    if (!tabela) {
+        console.error(`Tabela com ID ${tabelaId} não encontrada!`);
+        return;
+    }
+
+    // Limpar o corpo da tabela antes de inserir novos dados
+    tabela.innerHTML = "";
+
+    // Verificar se os dados são válidos e iteráveis
+    if (!Array.isArray(dados) || dados.length === 0) {
+        console.warn(`Dados fornecidos para a tabela ${tabelaId} são inválidos ou vazios.`);
+        const linha = document.createElement("tr");
+        const td = document.createElement("td");
+        td.colSpan = tabela.closest("table").querySelectorAll("th").length || 1;
+        td.textContent = "Nenhum dado disponível.";
+        linha.appendChild(td);
+        tabela.appendChild(linha);
+        return;
+    }
+
+    // Preencher a tabela com os dados fornecidos
+    dados.forEach(resultado => {
+        const linha = document.createElement("tr");
+
+        if (Array.isArray(resultado)) {
+            resultado.forEach(celula => {
+                const td = document.createElement("td");
+
+                if (typeof celula === "number") {
+                    td.textContent = formatarMoeda(celula);
+
+                    if (celula < 0) {
+                        td.style.backgroundColor = "red";
+                        td.style.color = "white";
+                    }
+                } else {
+                    td.textContent = celula;
+                }
+
+                linha.appendChild(td);
+            });
+        } else {
+            console.warn(`Elemento não iterável encontrado:`, resultado);
+        }
+
+        tabela.appendChild(linha);
+    });
+}
+
 
 function formatarMoeda(valor) {
     return new Intl.NumberFormat("pt-BR", {
@@ -267,9 +295,6 @@ function formatarMoeda(valor) {
         currency: "BRL"
     }).format(valor);
 }
-
-
-
 
 function buscaDeTabelaGeral(ano, mes){
     let anoPassado = Number(ano) - 1;
@@ -411,6 +436,324 @@ function buscaDeTabelaGeral(ano, mes){
         return lista;
 }
 
+function buscaDeTabelaDepartamento(ano, mes){
+    // let anoPassado = Number(ano) - 1;
+    // let anoFuturo = Number(ano) + 1;
+
+    let sql = ` WITH CTE_DADOS AS (
+                SELECT 
+                      tu.NOMEUSU AS NOME, 
+                      gru.DESCRGRUPOPROD as descs, 
+                    '1-VERBA ' as TIPO, 
+        ${generateSumCases4(mes, ano)}
+        from AD_ORCAMENTOCOMPRAS am 
+        inner join TGFGRU gru on gru.CODGRUPOPROD = am.CODGRUPOPROD 
+        inner join AD_COMPRADORDEPTO acd  ON acd.CODGRUPO =  am.CODGRUPOPROD 
+        inner join TSIUSU tu ON acd.CODUSU = tu.CODUSU 
+        GROUP BY gru.DESCRGRUPOPROD,  tu.NOMEUSU 
+        UNION ALL  
+        SELECT 
+        tu.NOMEUSU AS NOME, 
+        gru.DESCRGRUPOPROD as descs, 
+        '2-CONTAS APAGAR ' as TIPO, 
+        ${generateSumCases5(mes, ano)}
+         from VW_VERBA_COMPRAS_APAGAR_MERCADORIA am 
+         inner join TGFGRU gru on gru.CODGRUPOPROD = am.CODGRUPOPROD 
+         inner join AD_COMPRADORDEPTO acd  ON acd.CODGRUPO =  am.CODGRUPOPROD  
+         inner join TSIUSU tu ON acd.CODUSU = tu.CODUSU 
+         GROUP BY gru.DESCRGRUPOPROD,  tu.NOMEUSU 
+         UNION ALL 
+        SELECT 
+         tu.NOMEUSU AS NOME, 
+        gru.DESCRGRUPOPROD as descs, 
+        '3-CONTAS APAGAR RENEGOC ' as TIPO, 
+         ${generateSumCases5(mes, ano)}
+         from VW_VERBA_COMPRAS_APAGAR_RENEG am  
+         inner join TGFGRU gru on gru.CODGRUPOPROD = am.CODGRUPOPROD 
+         inner join AD_COMPRADORDEPTO acd  ON acd.CODGRUPO =  am.CODGRUPOPROD 
+         inner join TSIUSU tu ON acd.CODUSU = tu.CODUSU  
+         GROUP BY gru.DESCRGRUPOPROD,  tu.NOMEUSU 
+        UNION ALL 
+        SELECT 
+        tu.NOMEUSU AS NOME, 
+        gru.DESCRGRUPOPROD as descs, 
+         '4-CONTAS APAGAR FRETE ' as TIPO, 
+        ${generateSumCases5(mes, ano)}
+         from VW_VERBA_COMPRAS_APAGAR_FRETE am 
+         inner join TGFGRU gru on gru.CODGRUPOPROD = am.CODGRUPOPROD 
+         inner join AD_COMPRADORDEPTO acd  ON acd.CODGRUPO =  am.CODGRUPOPROD 
+         inner join TSIUSU tu ON acd.CODUSU = tu.CODUSU 
+         GROUP BY gru.DESCRGRUPOPROD,  tu.NOMEUSU 
+         UNION ALL
+         SELECT 
+         tu.NOMEUSU AS NOME, 
+         gru.DESCRGRUPOPROD as descs, 
+        '5-SALDO PEDIDOS ' as TIPO, 
+         ${generateSumCases5(mes, ano)}
+        from VW_VERBA_COMPRAS_SALDO_PEDIDOS am 
+        inner join TGFGRU gru on gru.CODGRUPOPROD = am.CODGRUPOPROD 
+        inner join AD_COMPRADORDEPTO acd  ON acd.CODGRUPO =  am.CODGRUPOPROD
+        inner join TSIUSU tu ON acd.CODUSU = tu.CODUSU 
+        GROUP BY gru.DESCRGRUPOPROD,  tu.NOMEUSU 
+        UNION ALL 
+        SELECT 
+        tu.NOMEUSU AS NOME, 
+        gru.DESCRGRUPOPROD as descs, 
+        '6-PEDIDOS TRANSITO ' as TIPO, 
+        ${generateSumCases5(mes, ano)}
+        from VW_VERBA_COMPRAS_PEDIDOS_TRANSITO am 
+        inner join TGFGRU gru on gru.CODGRUPOPROD = am.CODGRUPOPROD 
+        inner join AD_COMPRADORDEPTO acd  ON acd.CODGRUPO =  am.CODGRUPOPROD  
+        inner join TSIUSU tu ON acd.CODUSU = tu.CODUSU 
+        GROUP BY gru.DESCRGRUPOPROD,  tu.NOMEUSU 
+        UNION ALL 
+        SELECT 
+        tu.NOMEUSU AS NOME, 
+        gru.DESCRGRUPOPROD as descs, 
+        '7-COMPRAS DEVOLUÇOES ' as TIPO, 
+        ${generateSumCases4(mes, ano)}
+        from VW_VERBA_COMPRAS_DEVOLUCOES am 
+        inner join TGFGRU gru on gru.CODGRUPOPROD = am.CODGRUPOPROD 
+        inner join AD_COMPRADORDEPTO acd  ON acd.CODGRUPO =  am.CODGRUPOPROD  
+        inner join TSIUSU tu ON acd.CODUSU = tu.CODUSU 
+        GROUP BY gru.DESCRGRUPOPROD,  tu.NOMEUSU  
+        UNION ALL
+        SELECT 
+            NOME, 
+            descs, 
+            '8-SALDO ATUALIZADO' as TIPO, 
+            ${generateSumCases7(mes, ano)} 
+        FROM (
+        SELECT 
+            tu.NOMEUSU AS NOME,
+            gru.DESCRGRUPOPROD as descs, 
+            '1-VERBA ' as TIPO, 
+            ${generateSumCases4(mes, ano)}
+        FROM AD_ORCAMENTOCOMPRAS am
+        INNER JOIN TGFGRU gru ON gru.CODGRUPOPROD = am.CODGRUPOPROD
+        INNER JOIN AD_COMPRADORDEPTO acd ON acd.CODGRUPO = am.CODGRUPOPROD
+        INNER JOIN TSIUSU tu ON acd.CODUSU = tu.CODUSU
+        GROUP BY gru.DESCRGRUPOPROD, tu.NOMEUSU
+        UNION ALL
+        SELECT 
+            tu.NOMEUSU AS NOME,
+            gru.DESCRGRUPOPROD as descs, 
+            '2-CONTAS APAGAR ' as TIPO, 
+            ${generateSumCases5(mes, ano)}
+        FROM VW_VERBA_COMPRAS_APAGAR_MERCADORIA am
+        INNER JOIN TGFGRU gru ON gru.CODGRUPOPROD = am.CODGRUPOPROD
+        INNER JOIN AD_COMPRADORDEPTO acd ON acd.CODGRUPO = am.CODGRUPOPROD
+        INNER JOIN TSIUSU tu ON acd.CODUSU = tu.CODUSU
+        GROUP BY gru.DESCRGRUPOPROD, tu.NOMEUSU
+        UNION ALL
+        SELECT 
+            tu.NOMEUSU AS NOME,
+            gru.DESCRGRUPOPROD as descs, 
+            '3-CONTAS APAGAR RENEGOC ' as TIPO, 
+            ${generateSumCases5(mes, ano)}
+        FROM VW_VERBA_COMPRAS_APAGAR_RENEG am
+        INNER JOIN TGFGRU gru ON gru.CODGRUPOPROD = am.CODGRUPOPROD
+        INNER JOIN AD_COMPRADORDEPTO acd ON acd.CODGRUPO = am.CODGRUPOPROD
+        INNER JOIN TSIUSU tu ON acd.CODUSU = tu.CODUSU
+        GROUP BY gru.DESCRGRUPOPROD, tu.NOMEUSU
+        UNION ALL
+        SELECT 
+            tu.NOMEUSU AS NOME,
+            gru.DESCRGRUPOPROD as descs, 
+            '4-CONTAS APAGAR FRETE ' as TIPO, 
+            ${generateSumCases5(mes, ano)}
+        FROM VW_VERBA_COMPRAS_APAGAR_FRETE am
+        INNER JOIN TGFGRU gru ON gru.CODGRUPOPROD = am.CODGRUPOPROD
+        INNER JOIN AD_COMPRADORDEPTO acd ON acd.CODGRUPO = am.CODGRUPOPROD
+        INNER JOIN TSIUSU tu ON acd.CODUSU = tu.CODUSU
+        GROUP BY gru.DESCRGRUPOPROD, tu.NOMEUSU
+        UNION ALL
+        SELECT 
+            tu.NOMEUSU AS NOME,
+            gru.DESCRGRUPOPROD as descs, 
+            '5-SALDO PEDIDOS ' as TIPO, 
+            ${generateSumCases5(mes, ano)}
+        FROM VW_VERBA_COMPRAS_SALDO_PEDIDOS am
+        INNER JOIN TGFGRU gru ON gru.CODGRUPOPROD = am.CODGRUPOPROD
+        INNER JOIN AD_COMPRADORDEPTO acd ON acd.CODGRUPO = am.CODGRUPOPROD
+        INNER JOIN TSIUSU tu ON acd.CODUSU = tu.CODUSU
+        GROUP BY gru.DESCRGRUPOPROD, tu.NOMEUSU
+        UNION ALL
+        SELECT 
+            tu.NOMEUSU AS NOME,
+            gru.DESCRGRUPOPROD as descs, 
+            '6-PEDIDOS TRANSITO ' as TIPO, 
+            ${generateSumCases5(mes, ano)}
+        FROM VW_VERBA_COMPRAS_PEDIDOS_TRANSITO am
+        INNER JOIN TGFGRU gru ON gru.CODGRUPOPROD = am.CODGRUPOPROD
+        INNER JOIN AD_COMPRADORDEPTO acd ON acd.CODGRUPO = am.CODGRUPOPROD
+        INNER JOIN TSIUSU tu ON acd.CODUSU = tu.CODUSU
+        GROUP BY gru.DESCRGRUPOPROD, tu.NOMEUSU
+        UNION ALL
+        SELECT 
+            tu.NOMEUSU AS NOME,
+            gru.DESCRGRUPOPROD as descs, 
+            '7-COMPRAS DEVOLUCOES ' as TIPO, 
+            ${generateSumCases4(mes, ano)}
+        FROM VW_VERBA_COMPRAS_DEVOLUCOES am
+        INNER JOIN TGFGRU gru ON gru.CODGRUPOPROD = am.CODGRUPOPROD
+        INNER JOIN AD_COMPRADORDEPTO acd ON acd.CODGRUPO = am.CODGRUPOPROD
+        INNER JOIN TSIUSU tu ON acd.CODUSU = tu.CODUSU
+        GROUP BY gru.DESCRGRUPOPROD, tu.NOMEUSU
+    ) AS DADOS
+    GROUP BY DADOS.descs, DADOS.NOME)
+    SELECT 
+        NOME, 
+        descs, 
+        TIPO,
+        ${generateSumCases6(mes, ano)}
+    FROM CTE_DADOS
+    ORDER BY NOME, descs, TIPO;
+`;
+
+
+let lista = getDadosSql(sql);
+
+// console.log('lista', lista);
+
+
+return lista;
+
+
+}
+
+function buscaDeTabelaContasaPagar(ano, mes){
+    let sql = ` SELECT DISTINCT
+                            COALESCE (cab.NUNOTA, fin.NUMNOTA) AS PEDIDO,
+                            par.NOMEPARC AS PARCEIRO,
+                            ISNULL (SUM(cab.QTDVOL),0) AS QTD,
+                            SUM(fin.VLRDESDOB) AS VALOR,
+                            MONTH(fin.DTVENC)AS MES,
+  			 VEN.APELIDO as NOME
+                            FROM TGFFIN fin
+                            LEFT JOIN TGFCAB cab
+                            ON (fin.NUNOTA = cab.NUNOTA)
+                            LEFT JOIN TGFPAR par
+                            ON par.CODPARC = fin.CODPARC
+                            LEFT join tgfven VEN on VEN.codvend = cab.codvend
+                            WHERE 	fin.CODNAT 		in (120103,120101)
+                            --AND		cab.CODTIPOPER  in (1000, 1500, 1502, 1528)
+                            AND  	fin.RECDESP 	= -1
+                            AND  	fin.PROVISAO 	= 'N'
+                            AND MONTH(fin.DTVENC) 	in (${mes})
+                            AND  YEAR(fin.DTVENC) 	in (${ano})
+                            GROUP BY cab.NUNOTA ,fin.NUMNOTA, par.NOMEPARC, fin.DTVENC ,cab.QTDVOL, VEN.APELIDO`;
+
+
+    let lista = getDadosSql(sql);
+    // console.log('lista', lista);
+    return lista;
+}
+
+function buscaDeTabelaSaldosPedido(ano, mes){
+    let sql = ` SELECT
+                        fin.NUNOTA AS PEDIDO,
+                        par.NOMEPARC AS PARCEIRO,
+                        SUM(cab.QTDVOL) AS QTD,
+                        SUM(fin.VLRDESDOB) AS VALOR,
+                        MONTH(fin.DTVENC)AS MES,
+		      VEN.APELIDO as NOME
+                        FROM TGFFIN fin
+                        INNER JOIN TGFCAB cab ON (fin.NUNOTA = cab.NUNOTA)
+                        INNER JOIN TGFPAR par ON (par.CODPARC = cab.CODPARC)
+	               LEFT join tgfven VEN on VEN.codvend = cab.codvend
+                        INNER JOIN (select NUNOTA, COUNT(*) AS QTDBX  from TGFFIN f
+                                                    WHERE f.VLRBAIXA > 0
+                                                    AND MONTH(f.DTVENC) in (${mes})
+                                                    AND YEAR(f.DTVENC) 	in (${ano})
+                                                    AND RECDESP 		= -1
+                                                    AND f.PROVISAO 		= 'S'
+                                                    group by NUNOTA) bx on (bx.NUNOTA = cab.NUNOTA)
+                                WHERE fin.CODTIPOPER IN (1500, 1502, 1528)
+                                AND fin.PROVISAO = 'S'
+                                AND cab.PENDENTE = 'S'
+                                AND fin.VLRBAIXA = 0
+                                AND MONTH(fin.DTVENC)  in (${mes})
+                                AND  YEAR(fin.DTVENC) 	in (${ano})
+                                GROUP BY YEAR(fin.DTVENC), fin.NUNOTA, par.NOMEPARC, fin.DTVENC, VEN.APELIDO`;
+
+    let lista = getDadosSql(sql);
+    // console.log('lista', lista);
+    return lista;
+}
+
+function buscaDeTabelaSaldosTransito(ano, mes){
+    let sql = `SELECT
+                           fin.NUNOTA AS PEDIDO,
+                           par.NOMEPARC AS PARCEIRO,
+                           SUM(cab.QTDVOL) AS QTD,
+                           SUM(fin.VLRDESDOB) AS VALOR,
+                           MONTH(fin.DTVENC)AS MES,
+ 		         VEN.APELIDO as NOME
+                           FROM TGFFIN fin
+                           INNER JOIN TGFCAB cab
+                           ON (fin.NUNOTA = cab.NUNOTA)
+                           INNER JOIN TGFPAR par
+                           ON par.CODPARC = cab.CODPARC
+		         LEFT join tgfven VEN on VEN.codvend = cab.codvend
+                           WHERE fin.CODTIPOPER in ( 1000, 1500, 1502, 1528)
+                           AND cab.STATUSNOTA  = 'L'
+                           AND fin.NUNOTA NOT IN(
+			SELECT 	f.NUNOTA
+			FROM TGFFIN f
+	   		INNER JOIN TGFCAB c ON (f.NUNOTA = c.NUNOTA)
+	    		INNER JOIN TGFPAR p ON (p.CODPARC = c.CODPARC)	
+     		INNER JOIN (
+     				SELECT f2.NUNOTA, COUNT(*) AS QTDBX
+     				FROM TGFFIN f2
+					WHERE f2.VLRBAIXA > 0
+					AND MONTH(f2.DTVENC)  in (${mes})
+					AND YEAR(f2.DTVENC)   in (${ano})
+					AND f2.RECDESP 		= -1
+					AND f2.PROVISAO 		= 'S'
+					GROUP BY f2.NUNOTA) bx on (bx.NUNOTA = c.NUNOTA)
+			WHERE f.CODTIPOPER IN (1500, 1502, 1528)
+			AND f.PROVISAO = 'S'
+			AND c.PENDENTE = 'S'
+			AND MONTH(f.DTVENC)   in (${mes})
+			AND  YEAR(f.DTVENC) 	in (${ano})
+		)
+                           AND cab.PENDENTE = 'S'
+                           AND MONTH(fin.DTVENC) in (${mes})
+                           AND YEAR(fin.DTVENC)  in (${ano})
+            GROUP BY fin.NUNOTA, par.NOMEPARC, fin.DTVENC, VEN.APELIDO
+`;
+
+    let lista = getDadosSql(sql);
+    // console.log('lista', lista);
+    return lista;
+}
+
+function buscaDeTabelaDevolucoes(ano, mes){
+    let sql = `SELECT
+               fin.DTVENC AS VENCIMENTO,
+               fin.NUNOTA AS NUNOTA,
+               par.NOMEPARC AS PARCEIRO,
+               YEAR(fin.DTVENC) AS ANO,
+               MONTH(fin.DTVENC) AS MES,
+               gru.DESCRGRUPOPROD AS GRUPO,
+               SUM(fin.VLRDESDOB * vns.FATOR) AS VALOR,
+               from TGFFIN fin
+               inner join VW_NOTADEPARTAMENTO_SOLAR vns on (vns.NUNOTA = fin.NUNOTA) 
+               inner join tgfcab cab on cab.NUNOTA = fin.NUNOTA
+               inner join tgfpar par on par.CODPARC = cab.CODPARC
+               inner join TGFGRU gru on gru.CODGRUPOPROD = vns.CODGRUPOPROD
+               where fin.CODTIPOPER = 3000 
+               AND MONTH(fin.DTVENC) 	in (${mes}) 
+               AND  YEAR(fin.DTVENC) 	in (${ano})
+               GROUP BY fin.DTVENC, vns.CODGRUPOPROD,fin.nunota ,par.NOMEPARC, gru.DESCRGRUPOPROD
+    `;
+
+    
+    let lista = getDadosSql(sql);
+    // console.log('lista', lista);
+    return lista;
+}
 
 function generateSumCases(mes, ano) {
     let cases = '';
@@ -529,7 +872,7 @@ function generateSumCases7(mes, ano) {
         if (mesof > 12) {
             mesof -= 12;
         }
-        cases += `SUM(${mesExtension(mesof)}) as ${mesExtension(currentMonth)},`;
+        cases += `SUM(${mesExtension(mesof)}) as ${mesExtension(mesof)},`;
         if (mesof == 12) {
             Numeroano++;
         }
