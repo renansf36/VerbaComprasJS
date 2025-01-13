@@ -25,7 +25,7 @@ function IniciarApp(){
     initHtml();
 }
 
-function gerarSeletorMeses(id = "mes", label = "Mês:", classe = "form-select") {
+function gerarSeletorMeses(id = "mes", label = "Mes:", classe = "form-select") {
     const meses = [
         "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
         "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
@@ -94,7 +94,9 @@ function gerarAbas(){
         {id: "departamento", nome: "Departamento"},
         {id: "contas", nome: "Contas a Pagar"},
         {id: "saldos", nome: "Saldos de Pedido" },
-        {id: "compras", nome: "Compras Devolução" }
+        {id: "transito", nome: "Transito" },
+        {id: "devolucao", nome: "Devolucao" }
+
     ];
 
     let html = `<ul class="nav nav-tabs" id="resultTabs" role="tablist">`;
@@ -111,21 +113,41 @@ function gerarAbas(){
 }
 
 function gerarTabela(id, colunas) {
-    let html = `<div class="tab-pane fade ${id === "geral" ? "show active" : ""}" id="${id}-table" role="tabpanel">`;
-    html += `<div style="max-height: 400px; overflow-y: auto;">`;
-    html += `<table class="table table-striped">`;
-    html += `<thead><tr>`;
-    colunas.forEach(coluna => {
-        html += `<th>${coluna}</th>`;
-    });
-    html += `</tr></thead>`;
-    html += `<tbody id="body-${id}-table"></tbody>`;
-    html += `</table>`;
-    html += `</div>`; // Fechando o div de rolagem
-    html += `</div>`;
-    return html;
+    const isAtivo = id === "geral" ? "show active" : "";
+    
+    return `
+        <div class="tab-pane fade ${isAtivo}" id="${id}-table" role="tabpanel">
+            <div class="mb-3 text-end" id="botao-download-${id}">
+                <button class="btn btn-success btn-sm" onclick="baixarTabela('${id}')">
+                    <i class="fas fa-download me-1"></i>
+                    Baixar Excel
+                </button>
+            </div>
+            <div class="table-responsive" style="max-height: 400px;">
+                <table class="table table-striped table-hover" id="tabela-${id}">
+                    <thead class="table-light sticky-top">
+                        <tr>
+                            ${colunas.map(coluna => `<th scope="col">${coluna}</th>`).join('')}
+                        </tr>
+                    </thead>
+                    <tbody id="body-${id}-table"></tbody>
+                </table>
+            </div>
+        </div>
+    `;
 }
 
+function baixarTabela(tabelaId) {
+    const tabela = document.getElementById(`tabela-${tabelaId}`);
+    if (!tabela) {
+        alert("Tabela não encontrada!");
+        return;
+    }
+
+    const workbook = XLSX.utils.table_to_book(tabela, { sheet: "Sheet1" });
+    const nomeArquivo = `${tabelaId}.xlsx`;
+    XLSX.writeFile(workbook, nomeArquivo);
+}
 
 
 function gerarTabelas(mesSelecionado) {
@@ -136,22 +158,44 @@ function gerarTabelas(mesSelecionado) {
         colunasGeral.push(mesExtension2(mesAtual));
         colunasDepartamento.push(mesExtension2(mesAtual));
     }
+
     const tabelas = [
-        { id: "geral", colunas: colunasGeral},
-        { id: "departamento", colunas: colunasDepartamento},
-        { id: "contas", colunas: ["Contas a Pagar"] }
-        // { id: "saldos", colunas: ["Saldos de Pedido"] },
-        // { id: "compras", colunas: ["Compras Devolução"] }
+        { id: "geral", colunas: colunasGeral, nome: "Geral" },
+        { id: "departamento", colunas: colunasDepartamento, nome: "Departamento" },
+        { id: "contas", colunas: ["PEDIDO", "PARCEIRO", "QUANTIDADE", "VALOR", "MES", "COMPRADOR"], nome: "Contas_a_Pagar" },
+        { id: "saldos", colunas: ["PEDIDO", "PARCEIRO", "QUANTIDADE", "VALOR", "MES", "NOME"], nome: "Saldos_de_Pedido" },
+        { id: "transito", colunas: ["PEDIDO", "PARCEIRO", "QUANTIDADE", "VALOR", "MES", "NOME"], nome: "Transito" },
+        { id: "devolucao", colunas: ["PEDIDO", "PARCEIRO", "VENCIMENTO", "VALOR", "MES", "GRUPO"], nome: "Devolucoes" }
+
+        
     ];
 
     let html = `<div class="tab-content mt-3">`;
     tabelas.forEach(tabela => {
         html += gerarTabela(tabela.id, tabela.colunas);
+        html += `<div id="botao-download-${tabela.id}" class="text-end">`;
+        html += gerarBotaoDownloadTabela(`tabela-${tabela.id}`, tabela.nome);
+        html += `</div>`;
     });
     html += `</div>`;
     return html;
 }
 
+function exportarTabelaParaExcel(tabelaId, nomeArquivo) {
+    const tabela = document.getElementById(tabelaId);
+    if (!tabela) {
+        console.error(`Tabela com ID ${tabelaId} não encontrada!`);
+        return;
+    }
+
+    // Converte a tabela HTML para uma planilha do Excel
+    const ws = XLSX.utils.table_to_sheet(tabela);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
+
+    // Salva o arquivo Excel
+    XLSX.writeFile(wb, `${nomeArquivo}.xlsx`);
+}
 
 function initHtml() {
     let filtro = $('#inicio');
@@ -173,6 +217,7 @@ function initHtml() {
         // Regionais
         html += gerarRegionais();
         html += `</div>`; // Fecha filtros
+        
 
         // Botão de filtrar
         html += gerarBotaoFiltrar();
@@ -204,8 +249,6 @@ function initHtml() {
 
 }
 
-
-
 function botaoAcao() {
     const mesSelecionado = parseInt($("#mes").val());
     const anoSelecionado = parseInt($("#ano").val());
@@ -219,6 +262,10 @@ function botaoAcao() {
     // Obter os resultados das funções de busca
     const resultadosGeral = buscaDeTabelaGeral(anoSelecionado, mesSelecionado);
     const resultadosDepartamento = buscaDeTabelaDepartamento(anoSelecionado, mesSelecionado);
+    const resultadosContas = buscaDeTabelaContasaPagar(anoSelecionado, mesSelecionado);
+    const resultadosSaldos = buscaDeTabelaSaldosPedido(anoSelecionado, mesSelecionado);
+    const resultadosTransito = buscaDeTabelaSaldosTransito(anoSelecionado, mesSelecionado);
+    const resultadosDevolucao = buscaDeTabelaDevolucoes(anoSelecionado, mesSelecionado);
 
     // Atualizar tabela geral
     preencherTabela("body-geral-table", resultadosGeral);
@@ -226,12 +273,25 @@ function botaoAcao() {
     // Atualizar tabela departamento
     preencherTabela("body-departamento-table", resultadosDepartamento);
 
+    // Atualizar tabela contas a pagar
+    preencherTabela("body-contas-table", resultadosContas);
+
+    // Atualizar tabela saldos de pedido
+    preencherTabela("body-saldos-table", resultadosSaldos);
+
+    // Atualizar tabela Transito
+    preencherTabela("body-transito-table", resultadosTransito);
+
+    // Atualizar tabela Devolução
+    preencherTabela("body-devolucao-table", resultadosDevolucao);
+
     // Exibir o container de resultados
     const resultContainer = document.getElementById("resultContainer");
     if (resultContainer) {
         resultContainer.style.display = "block";
     }
 }
+
 
 
 function preencherTabela(tabelaId, dados) {
@@ -260,41 +320,49 @@ function preencherTabela(tabelaId, dados) {
     }
 
     // Preencher a tabela com os dados fornecidos
-    dados.forEach(resultado => {
+    dados.forEach((resultado, index) => {
         const linha = document.createElement("tr");
-
+    
+    
         if (Array.isArray(resultado)) {
             resultado.forEach(celula => {
                 const td = document.createElement("td");
 
-                if (typeof celula === "number") {
+                 td.style.whiteSpace = "nowrap";
+    
+                if (Number.isFinite(celula)) {
                     td.textContent = formatarMoeda(celula);
-
-                    if (celula < 0) {
+    
+                    if (celula < 0 && index !== 0) { // Evitar vermelho na primeira linha
                         td.style.backgroundColor = "red";
                         td.style.color = "white";
                     }
                 } else {
                     td.textContent = celula;
                 }
-
+    
                 linha.appendChild(td);
             });
         } else {
             console.warn(`Elemento não iterável encontrado:`, resultado);
         }
-
+    
         tabela.appendChild(linha);
     });
 }
 
 
-function formatarMoeda(valor) {
-    return new Intl.NumberFormat("pt-BR", {
-        style: "currency",
-        currency: "BRL"
-    }).format(valor);
+function gerarBotaoDownloadTabela(tabelaId, nomeArquivo) {
+    const tabela = document.getElementById(tabelaId);
+    if (!tabela) return '';
+
+    return `
+        <button class="btn btn-success btn-sm mt-2" onclick="exportarTabelaParaExcel('${tabelaId}', '${nomeArquivo}')">
+            Baixar Excel
+        </button>`;
 }
+
+
 
 function buscaDeTabelaGeral(ano, mes){
     let anoPassado = Number(ano) - 1;
@@ -433,6 +501,7 @@ function buscaDeTabelaGeral(ano, mes){
 
         let lista = getDadosSql(sql);
          
+        console.log(sql)
         return lista;
 }
 
@@ -624,11 +693,11 @@ return lista;
 
 function buscaDeTabelaContasaPagar(ano, mes){
     let sql = ` SELECT DISTINCT
-                            COALESCE (cab.NUNOTA, fin.NUMNOTA) AS PEDIDO,
+                             CAST(COALESCE (cab.NUNOTA, fin.NUMNOTA)AS NVARCHAR) AS PEDIDO,
                             par.NOMEPARC AS PARCEIRO,
-                            ISNULL (SUM(cab.QTDVOL),0) AS QTD,
+                             CAST(ISNULL (SUM(cab.QTDVOL),0)AS NVARCHAR) AS QTD,
                             SUM(fin.VLRDESDOB) AS VALOR,
-                            MONTH(fin.DTVENC)AS MES,
+                           FORMAT(fin.DTVENC, 'MMMM', 'pt-BR')AS MES,
   			 VEN.APELIDO as NOME
                             FROM TGFFIN fin
                             LEFT JOIN TGFCAB cab
@@ -652,11 +721,11 @@ function buscaDeTabelaContasaPagar(ano, mes){
 
 function buscaDeTabelaSaldosPedido(ano, mes){
     let sql = ` SELECT
-                        fin.NUNOTA AS PEDIDO,
+                         CAST(fin.NUNOTA AS NVARCHAR) AS PEDIDO,
                         par.NOMEPARC AS PARCEIRO,
-                        SUM(cab.QTDVOL) AS QTD,
+                         CAST(SUM(cab.QTDVOL)AS NVARCHAR) AS QTD,
                         SUM(fin.VLRDESDOB) AS VALOR,
-                        MONTH(fin.DTVENC)AS MES,
+                       FORMAT(fin.DTVENC, 'MMMM', 'pt-BR')AS MES,
 		      VEN.APELIDO as NOME
                         FROM TGFFIN fin
                         INNER JOIN TGFCAB cab ON (fin.NUNOTA = cab.NUNOTA)
@@ -684,11 +753,11 @@ function buscaDeTabelaSaldosPedido(ano, mes){
 
 function buscaDeTabelaSaldosTransito(ano, mes){
     let sql = `SELECT
-                           fin.NUNOTA AS PEDIDO,
+                           CAST(fin.NUNOTA  AS NVARCHAR) AS PEDIDO,
                            par.NOMEPARC AS PARCEIRO,
-                           SUM(cab.QTDVOL) AS QTD,
+                          CAST(SUM(cab.QTDVOL)AS NVARCHAR) AS QTD,
                            SUM(fin.VLRDESDOB) AS VALOR,
-                           MONTH(fin.DTVENC)AS MES,
+                          FORMAT(fin.DTVENC, 'MMMM', 'pt-BR')AS MES,
  		         VEN.APELIDO as NOME
                            FROM TGFFIN fin
                            INNER JOIN TGFCAB cab
@@ -731,13 +800,12 @@ function buscaDeTabelaSaldosTransito(ano, mes){
 
 function buscaDeTabelaDevolucoes(ano, mes){
     let sql = `SELECT
-               fin.DTVENC AS VENCIMENTO,
-               fin.NUNOTA AS NUNOTA,
+               CAST(fin.NUNOTA AS NVARCHAR) AS NUNOTA,
                par.NOMEPARC AS PARCEIRO,
-               YEAR(fin.DTVENC) AS ANO,
-               MONTH(fin.DTVENC) AS MES,
-               gru.DESCRGRUPOPROD AS GRUPO,
+               FORMAT(fin.DTVENC, 'dd/MM/yyyy') AS VENCIMENTO,
                SUM(fin.VLRDESDOB * vns.FATOR) AS VALOR,
+               FORMAT(fin.DTVENC, 'MMMM', 'pt-BR')AS MES,
+               gru.DESCRGRUPOPROD AS GRUPO
                from TGFFIN fin
                inner join VW_NOTADEPARTAMENTO_SOLAR vns on (vns.NUNOTA = fin.NUNOTA) 
                inner join tgfcab cab on cab.NUNOTA = fin.NUNOTA
@@ -803,7 +871,7 @@ function generateSumCases3(mes, ano) {
         if (mesof > 12) {
             mesof -= 12;
         }
-        cases += `SUM(CASE WHEN oc.MES = ${mesof} AND oc.ANO = ${Numeroano} THEN oc.VALOR ELSE 0 END) as ${mesExtension(mesof)},`;
+        cases += `CAST(SUM(CASE WHEN oc.MES = ${mesof} AND oc.ANO = ${Numeroano} THEN oc.VALOR ELSE 0 END)AS DECIMAL(10,2)) as ${mesExtension(mesof)},`;
         if (mesof == 12) {
             Numeroano++;
         }
@@ -972,4 +1040,11 @@ function mesExtension2(month) {
         12: 'DEZEEMBRO'
     };
     return meses[month] || '';
+}
+
+function formatarMoeda(valor) {
+    return new Intl.NumberFormat("pt-BR", {
+        style: "currency",
+        currency: "BRL"
+    }).format(valor).replace("R$", "").trim();
 }
